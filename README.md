@@ -27,3 +27,7 @@ App Android para llevar la agenda de turnos de una profesional de podología, au
 3. Run ▶ en un dispositivo o emulador.
 
 En la versión de desarrollo, el menú ⋮ de Inicio tiene "Cargar datos de prueba".
+
+## Créditos
+
+- Ícono: la palabra "Agenda" dibujada con la tipografía Dancing Script (Impallari Type, licencia SIL Open Font License 1.1).

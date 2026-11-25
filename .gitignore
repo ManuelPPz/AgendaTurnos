@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Vistas previas generadas fuera del proyecto
+/Claude outputs/
