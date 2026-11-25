@@ -7,8 +7,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.agendaturnos.data.AgendaRepository
+import com.example.agendaturnos.data.model.EstadoTurno
 import com.example.agendaturnos.ui.screens.AgendarScreen
 import com.example.agendaturnos.ui.screens.BuscarClientesScreen
+import com.example.agendaturnos.ui.screens.CerrarTurnoScreen
+import com.example.agendaturnos.ui.screens.DetalleTratamientoScreen
+import com.example.agendaturnos.ui.screens.HistorialScreen
 import com.example.agendaturnos.ui.screens.EditarTurnoScreen
 import com.example.agendaturnos.ui.screens.NuevoClienteTurnoScreen
 import com.example.agendaturnos.ui.screens.TurnoDetalleScreen
@@ -16,7 +20,6 @@ import com.example.agendaturnos.ui.screens.CatalogoScreen
 import com.example.agendaturnos.ui.screens.ClienteFormScreen
 import com.example.agendaturnos.ui.screens.InicioScreen
 import com.example.agendaturnos.ui.screens.PerfilClienteScreen
-import com.example.agendaturnos.ui.screens.PantallaPendiente
 
 @Composable
 fun AgendaNavHost(repo: AgendaRepository) {
@@ -89,8 +92,28 @@ fun AgendaNavHost(repo: AgendaRepository) {
                 onGuardado = volver,
             )
         }
-        composable(Rutas.CERRAR_TURNO, argTurno) { PantallaPendiente("Cerrar turno", "Etapa 5", volver) }
-        composable(Rutas.DETALLE_TRATAMIENTO, argTurno) { PantallaPendiente("Detalle del tratamiento", "Etapa 5", volver) }
+        composable(Rutas.CERRAR_TURNO, argTurno) { entry ->
+            val id = entry.arguments?.getLong("turnoId") ?: 0L
+            CerrarTurnoScreen(
+                repo = repo,
+                turnoId = id,
+                onVolver = volver,
+                onListo = { nav.popBackStack(Rutas.INICIO, inclusive = false) },
+                onReprogramar = {
+                    nav.navigate(Rutas.editarTurno(id)) {
+                        popUpTo(Rutas.CERRAR_TURNO) { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(Rutas.DETALLE_TRATAMIENTO, argTurno) { entry ->
+            DetalleTratamientoScreen(
+                repo = repo,
+                turnoId = entry.arguments?.getLong("turnoId") ?: 0L,
+                onVolver = volver,
+                onAbrirCliente = { nav.navigate(Rutas.cliente(it)) },
+            )
+        }
         composable(Rutas.CLIENTE, argCliente) { entry ->
             val id = entry.arguments?.getLong("clienteId") ?: 0L
             PerfilClienteScreen(
@@ -131,6 +154,19 @@ fun AgendaNavHost(repo: AgendaRepository) {
                 },
             )
         }
-        composable(Rutas.HISTORIAL, argCliente) { PantallaPendiente("Historial", "Etapa 5", volver) }
+        composable(Rutas.HISTORIAL, argCliente) { entry ->
+            HistorialScreen(
+                repo = repo,
+                clienteId = entry.arguments?.getLong("clienteId") ?: 0L,
+                onVolver = volver,
+                onAbrir = { t ->
+                    if (t.turno.estado == EstadoTurno.TERMINADO) {
+                        nav.navigate(Rutas.detalleTratamiento(t.turno.id))
+                    } else {
+                        nav.navigate(Rutas.turno(t.turno.id))
+                    }
+                },
+            )
+        }
     }
 }

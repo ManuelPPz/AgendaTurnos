@@ -4,6 +4,8 @@ import androidx.room.withTransaction
 import com.example.agendaturnos.data.db.AgendaDatabase
 import com.example.agendaturnos.data.model.Cliente
 import com.example.agendaturnos.data.model.EstadoTurno
+import com.example.agendaturnos.data.model.Foto
+import com.example.agendaturnos.data.model.TipoFoto
 import com.example.agendaturnos.data.model.Genero
 import com.example.agendaturnos.data.model.Lugar
 import com.example.agendaturnos.data.model.TratamientoCatalogo
@@ -22,6 +24,7 @@ class AgendaRepository(private val db: AgendaDatabase) {
     private val clientes = db.clienteDao()
     private val tratamientos = db.tratamientoDao()
     private val turnos = db.turnoDao()
+    private val fotoDao = db.fotoDao()
 
     // ---------- Clientes ----------
 
@@ -94,6 +97,25 @@ class AgendaRepository(private val db: AgendaDatabase) {
     suspend fun actualizarTurno(turno: Turno, items: List<TurnoTratamiento>) = db.withTransaction {
         turnos.actualizarTurno(turno)
         turnos.reemplazarItems(turno.id, items)
+    }
+
+    /**
+     * Cierra un turno como terminado: guarda el precio final y la descripción
+     * de cada tratamiento, y las fotos (rutas ya confirmadas).
+     */
+    suspend fun cerrarTurnoTerminado(
+        turnoId: Long,
+        items: List<TurnoTratamiento>,
+        fotos: Map<TipoFoto, String>,
+    ) = db.withTransaction {
+        val d = obtenerTurno(turnoId) ?: return@withTransaction
+        turnos.actualizarTurno(
+            d.turno.copy(estado = EstadoTurno.TERMINADO, cerradoEn = LocalDateTime.now())
+        )
+        turnos.reemplazarItems(turnoId, items)
+        fotos.forEach { (tipo, ruta) ->
+            fotoDao.guardar(Foto(turnoId = turnoId, tipo = tipo, rutaArchivo = ruta))
+        }
     }
 
     suspend fun cancelarTurno(id: Long, motivo: String?) {
