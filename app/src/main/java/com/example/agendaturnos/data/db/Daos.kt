@@ -35,6 +35,12 @@ interface ClienteDao {
     @Query("SELECT * FROM clientes WHERE activo = 1 ORDER BY nombreBusqueda")
     fun observarActivos(): Flow<List<Cliente>>
 
+    @Query("SELECT * FROM clientes WHERE telefono IN (:telefonos)")
+    suspend fun porTelefonos(telefonos: List<String>): List<Cliente>
+
+    @Query("DELETE FROM clientes WHERE id = :id")
+    suspend fun borrar(id: Long)
+
     /** [texto] tiene que venir normalizado (minúsculas, sin acentos). */
     @Query(
         """
@@ -88,6 +94,12 @@ abstract class TurnoDao {
 
     @Query("DELETE FROM turno_tratamientos WHERE turnoId = :turnoId")
     abstract suspend fun borrarItems(turnoId: Long)
+
+    @Query("SELECT id FROM turnos WHERE clienteId = :clienteId")
+    abstract suspend fun idsDeCliente(clienteId: Long): List<Long>
+
+    @Query("DELETE FROM turnos WHERE clienteId = :clienteId")
+    abstract suspend fun borrarDeCliente(clienteId: Long)
 
     /** Crea el turno y sus tratamientos juntos. */
     @Transaction

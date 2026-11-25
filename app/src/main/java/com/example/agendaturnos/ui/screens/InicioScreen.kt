@@ -2,7 +2,6 @@ package com.example.agendaturnos.ui.screens
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -24,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -86,8 +86,10 @@ fun InicioScreen(
     val recontactar by remember { repo.clientesParaRecontactar() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     var menuAbierto by remember { mutableStateOf(false) }
-    // Solo en la versión de desarrollo (la que se instala desde Android Studio).
-    val esDesarrollo = remember { (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0 }
+    // Si quedaron cargados los clientes de ejemplo, el menú ofrece borrarlos.
+    var hayDatosDePrueba by remember { mutableStateOf(false) }
+    var confirmarBorrarPrueba by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { hayDatosDePrueba = repo.hayDatosDePrueba() }
 
     // ---- Permisos para los avisos ----
     val pedirNotificaciones = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -132,20 +134,12 @@ fun InicioScreen(
                                     onClick = { menuAbierto = false; onNavegar(ruta) },
                                 )
                             }
-                            if (esDesarrollo) {
+                            if (hayDatosDePrueba) {
                                 DropdownMenuItem(
-                                    text = { Text("Cargar datos de prueba") },
+                                    text = { Text("Borrar datos de prueba") },
                                     onClick = {
                                         menuAbierto = false
-                                        scope.launch {
-                                            val cargados = repo.cargarDatosDePrueba()
-                                            repo.reprogramarTodosLosAvisos()
-                                            Toast.makeText(
-                                                context,
-                                                if (cargados) "Datos de prueba cargados" else "Los datos de prueba ya estaban cargados",
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
-                                        }
+                                        confirmarBorrarPrueba = true
                                     },
                                 )
                             }
@@ -269,6 +263,20 @@ fun InicioScreen(
             }
         }
     }
+
+    if (confirmarBorrarPrueba) {
+        DialogoBorrarPrueba(
+            onConfirmar = {
+                confirmarBorrarPrueba = false
+                scope.launch {
+                    val borrados = repo.borrarDatosDePrueba()
+                    hayDatosDePrueba = false
+                    Toast.makeText(context, "Se borraron $borrados clientes de prueba", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onCancelar = { confirmarBorrarPrueba = false },
+        )
+    }
 }
 
 /** Agrupa los próximos turnos: Hoy, Mañana, Esta semana o Más adelante. */
@@ -277,6 +285,22 @@ private fun grupoDeFecha(fecha: LocalDate, hoy: LocalDate = LocalDate.now()): St
     fecha == hoy.plusDays(1) -> "Mañana"
     !fecha.isAfter(hoy.plusDays(7)) -> "Esta semana"
     else -> "Más adelante"
+}
+
+@Composable
+private fun DialogoBorrarPrueba(onConfirmar: () -> Unit, onCancelar: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("¿Borrar los datos de prueba?") },
+        text = {
+            Text(
+                "Se borran los 8 clientes de ejemplo (María González, Ana Rodríguez, etc.) con sus turnos. " +
+                    "Tus clientes y turnos reales no se tocan.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirmar) { Text("Borrar") } },
+        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },
+    )
 }
 
 private fun mensajeRecontacto(nombre: String): String {

@@ -230,16 +230,7 @@ class AgendaRepository(
         val aur = catalogo.getValue("Auriculoterapia").id
         val man = catalogo.getValue("Manicura").id
 
-        val ids = listOf(
-            ClientePrueba("María González", "099 101 201", "Av. Italia 2345, apto 3", Genero.FEMENINO, "1958-03-12", "Pies sensibles, prefiere turnos de mañana"),
-            ClientePrueba("Ana Rodríguez", "098 202 302", null, Genero.FEMENINO, "1985-07-21", null),
-            ClientePrueba("Lucía Fernández", "094 303 403", "Bv. Artigas 1120", Genero.FEMENINO, null, "Diabética: cuidado especial en podología"),
-            ClientePrueba("Carlos Pereira", "091 404 504", "Rivera 3456", Genero.MASCULINO, "1949-11-02", "Usa bastón, atender en planta baja"),
-            ClientePrueba("Sofía Martínez", "097 505 605", null, Genero.FEMENINO, "1992-01-30", "Esmalte semipermanente, tonos nude"),
-            ClientePrueba("Jorge López", "099 606 706", "8 de Octubre 2890", Genero.MASCULINO, null, null),
-            ClientePrueba("Valentina Silva", "095 707 807", null, Genero.FEMENINO, "2000-09-14", null),
-            ClientePrueba("Rosa Méndez", "092 808 908", "Garibaldi 2210", Genero.FEMENINO, "1952-05-05", "Auriculoterapia para la ansiedad"),
-        ).map { c ->
+        val ids = CLIENTES_PRUEBA.map { c ->
             guardarCliente(
                 Cliente(
                     nombre = c.nombre, telefono = c.tel, direccion = c.dir, genero = c.g,
@@ -293,6 +284,32 @@ class AgendaRepository(
         true
     }
 
+    /** true si siguen cargados clientes de ejemplo. */
+    suspend fun hayDatosDePrueba(): Boolean = clientesDePrueba().isNotEmpty()
+
+    private suspend fun clientesDePrueba(): List<Cliente> {
+        val pares = CLIENTES_PRUEBA.map { it.nombre to it.tel }.toSet()
+        return clientes.porTelefonos(CLIENTES_PRUEBA.map { it.tel }).filter { (it.nombre to it.telefono) in pares }
+    }
+
+    /** Borra los clientes de ejemplo con sus turnos, avisos y fotos. No toca nada más. */
+    suspend fun borrarDatosDePrueba(): Int {
+        val lista = clientesDePrueba()
+        val archivos = mutableListOf<String>()
+        db.withTransaction {
+            lista.forEach { c ->
+                turnos.idsDeCliente(c.id).forEach { turnoId ->
+                    avisos?.cancelarTurno(turnoId)
+                    archivos += fotoDao.deTurno(turnoId).map { it.rutaArchivo }
+                }
+                turnos.borrarDeCliente(c.id) // borra también sus tratamientos y fotos (en cascada)
+                clientes.borrar(c.id)        // borra también sus avisos (en cascada)
+            }
+        }
+        archivos.forEach { java.io.File(it).delete() }
+        return lista.size
+    }
+
     companion object {
         /** "Ana María Pérez" -> "ana maria perez", para buscar sin acentos ni mayúsculas. */
         fun normalizar(texto: String): String =
@@ -309,4 +326,16 @@ private data class ClientePrueba(
     val g: Genero?,
     val nac: String?,
     val pref: String?,
+)
+
+/** Clientes de ejemplo para desarrollo (se reconocen por nombre y teléfono exactos). */
+private val CLIENTES_PRUEBA = listOf(
+    ClientePrueba("María González", "099 101 201", "Av. Italia 2345, apto 3", Genero.FEMENINO, "1958-03-12", "Pies sensibles, prefiere turnos de mañana"),
+    ClientePrueba("Ana Rodríguez", "098 202 302", null, Genero.FEMENINO, "1985-07-21", null),
+    ClientePrueba("Lucía Fernández", "094 303 403", "Bv. Artigas 1120", Genero.FEMENINO, null, "Diabética: cuidado especial en podología"),
+    ClientePrueba("Carlos Pereira", "091 404 504", "Rivera 3456", Genero.MASCULINO, "1949-11-02", "Usa bastón, atender en planta baja"),
+    ClientePrueba("Sofía Martínez", "097 505 605", null, Genero.FEMENINO, "1992-01-30", "Esmalte semipermanente, tonos nude"),
+    ClientePrueba("Jorge López", "099 606 706", "8 de Octubre 2890", Genero.MASCULINO, null, null),
+    ClientePrueba("Valentina Silva", "095 707 807", null, Genero.FEMENINO, "2000-09-14", null),
+    ClientePrueba("Rosa Méndez", "092 808 908", "Garibaldi 2210", Genero.FEMENINO, "1952-05-05", "Auriculoterapia para la ansiedad"),
 )
