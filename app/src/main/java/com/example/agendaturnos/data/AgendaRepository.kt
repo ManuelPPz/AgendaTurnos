@@ -1,7 +1,12 @@
 package com.example.agendaturnos.data
 
 import androidx.room.withTransaction
+import com.example.agendaturnos.avisos.ProgramadorAvisos
 import com.example.agendaturnos.data.db.AgendaDatabase
+import com.example.agendaturnos.data.model.Aviso
+import com.example.agendaturnos.data.model.ClienteRecontacto
+import com.example.agendaturnos.data.model.EstadoAviso
+import com.example.agendaturnos.data.model.TipoAviso
 import com.example.agendaturnos.data.model.Cliente
 import com.example.agendaturnos.data.model.EstadoTurno
 import com.example.agendaturnos.data.model.Foto
@@ -13,6 +18,7 @@ import com.example.agendaturnos.data.model.Turno
 import com.example.agendaturnos.data.model.TurnoConDetalle
 import com.example.agendaturnos.data.model.TurnoTratamiento
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import java.text.Normalizer
 import java.time.LocalDate
@@ -20,11 +26,15 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 
 /** Punto único de acceso a los datos para las pantallas. */
-class AgendaRepository(private val db: AgendaDatabase) {
+class AgendaRepository(
+    private val db: AgendaDatabase,
+    private val avisos: ProgramadorAvisos? = null,
+) {
     private val clientes = db.clienteDao()
     private val tratamientos = db.tratamientoDao()
     private val turnos = db.turnoDao()
     private val fotoDao = db.fotoDao()
+    private val avisoDao = db.avisoDao()
 
     // ---------- Clientes ----------
 
@@ -63,9 +73,13 @@ class AgendaRepository(private val db: AgendaDatabase) {
         cliente: Cliente,
         turno: Turno,
         items: List<TurnoTratamiento>,
-    ): Long = db.withTransaction {
-        val clienteId = guardarCliente(cliente)
-        turnos.crearTurno(turno.copy(clienteId = clienteId), items)
+    ): Long {
+        val id = db.withTransaction {
+            val clienteId = guardarCliente(cliente)
+            turnos.crearTurno(turno.copy(clienteId = clienteId), items)
+        }
+        reprogramar(id)
+        return id
     }
 
     // ---------- Tratamientos ----------
@@ -80,8 +94,11 @@ class AgendaRepository(private val db: AgendaDatabase) {
 
     // ---------- Turnos ----------
 
-    suspend fun agendar(turno: Turno, items: List<TurnoTratamiento>): Long =
-        turnos.crearTurno(turno, items)
+    suspend fun agendar(turno: Turno, items: List<TurnoTratamiento>): Long {
+        val id = turnos.crearTurno(turno, items)
+        reprogramar(id)
+        return id
+    }
 
     fun proximosTurnos(desde: LocalDateTime = LocalDateTime.now()): Flow<List<TurnoConDetalle>> =
         turnos.observarProximos(desde)
@@ -94,9 +111,12 @@ class AgendaRepository(private val db: AgendaDatabase) {
     suspend fun obtenerTurno(id: Long): TurnoConDetalle? = turnos.observarDetalle(id).first()
 
     /** Editar o reprogramar: actualiza el turno y reemplaza sus tratamientos. */
-    suspend fun actualizarTurno(turno: Turno, items: List<TurnoTratamiento>) = db.withTransaction {
-        turnos.actualizarTurno(turno)
-        turnos.reemplazarItems(turno.id, items)
+    suspend fun actualizarTurno(turno: Turno, items: List<TurnoTratamiento>) {
+        db.withTransaction {
+            turnos.actualizarTurno(turno)
+            turnos.reemplazarItems(turno.id, items)
+        }
+        reprogramar(turno.id)
     }
 
     /**
@@ -108,6 +128,7 @@ class AgendaRepository(private val db: AgendaDatabase) {
         items: List<TurnoTratamiento>,
         fotos: Map<TipoFoto, String>,
     ) = db.withTransaction {
+        avisos?.cancelarTurno(turnoId)
         val d = obtenerTurno(turnoId) ?: return@withTransaction
         turnos.actualizarTurno(
             d.turno.copy(estado = EstadoTurno.TERMINADO, cerradoEn = LocalDateTime.now())
@@ -127,7 +148,60 @@ class AgendaRepository(private val db: AgendaDatabase) {
                 cerradoEn = LocalDateTime.now(),
             )
         )
+        avisos?.cancelarTurno(id)
     }
+
+    // ---------- Avisos ----------
+
+    /** Programa (o cancela) los avisos de un turno según su estado actual. */
+    private suspend fun reprogramar(turnoId: Long) {
+        val a = avisos ?: return
+        val d = obtenerTurno(turnoId)
+        if (d != null) a.programarTurno(d) else a.cancelarTurno(turnoId)
+    }
+
+    suspend fun reprogramarTodosLosAvisos() {
+        val a = avisos ?: return
+        turnos.listarAgendadosDesde(LocalDateTime.now()).forEach { a.programarTurno(it) }
+    }
+
+    /**
+     * Clientes que pasaron sus días de recontacto (20 por defecto) desde la última visita,
+     * no tienen turno pendiente y no fueron pospuestos ni descartados.
+     */
+    fun clientesParaRecontactar(): Flow<List<ClienteRecontacto>> =
+        combine(turnos.observarCandidatosRecontacto(), avisoDao.observarRecontactos()) { candidatos, registros ->
+            val ahora = LocalDateTime.now()
+            candidatos.filter { c ->
+                val vence = c.ultimaVisita.plusDays(c.cliente.diasRecontacto.toLong())
+                !vence.isAfter(ahora) && registros.none { a ->
+                    a.clienteId == c.cliente.id && (
+                        (a.estado == EstadoAviso.DESCARTADO && !a.fechaProgramada.isBefore(c.ultimaVisita)) ||
+                            ((a.estado == EstadoAviso.POSPUESTO || a.estado == EstadoAviso.ENVIADO) &&
+                                a.fechaProgramada.isAfter(ahora))
+                        )
+                }
+            }
+        }
+
+    suspend fun clientesParaRecontactarAhora(): List<ClienteRecontacto> = clientesParaRecontactar().first()
+
+    private suspend fun registrarRecontacto(clienteId: Long, estado: EstadoAviso, fecha: LocalDateTime) {
+        avisoDao.insertar(
+            Aviso(tipo = TipoAviso.RECONTACTO, clienteId = clienteId, fechaProgramada = fecha, estado = estado)
+        )
+    }
+
+    /** Se le mandó el mensaje: se oculta 7 días esperando respuesta. */
+    suspend fun marcarRecontactoEnviado(clienteId: Long) =
+        registrarRecontacto(clienteId, EstadoAviso.ENVIADO, LocalDateTime.now().plusDays(7))
+
+    suspend fun posponerRecontacto(clienteId: Long, dias: Long = 7) =
+        registrarRecontacto(clienteId, EstadoAviso.POSPUESTO, LocalDateTime.now().plusDays(dias))
+
+    /** No vuelve a aparecer hasta que tenga una nueva visita. */
+    suspend fun descartarRecontacto(c: ClienteRecontacto) =
+        registrarRecontacto(c.cliente.id, EstadoAviso.DESCARTADO, c.ultimaVisita)
 
     fun historial(clienteId: Long, incluirCancelados: Boolean = false): Flow<List<TurnoConDetalle>> =
         turnos.observarHistorial(

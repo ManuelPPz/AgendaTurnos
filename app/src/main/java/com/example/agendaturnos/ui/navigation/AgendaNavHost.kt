@@ -1,6 +1,7 @@
 package com.example.agendaturnos.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -22,11 +23,23 @@ import com.example.agendaturnos.ui.screens.InicioScreen
 import com.example.agendaturnos.ui.screens.PerfilClienteScreen
 
 @Composable
-fun AgendaNavHost(repo: AgendaRepository) {
+fun AgendaNavHost(
+    repo: AgendaRepository,
+    turnoDesdeAviso: Long? = null,
+    onAvisoAbierto: () -> Unit = {},
+) {
     val nav = rememberNavController()
     val volver: () -> Unit = { nav.popBackStack() }
     val argTurno = listOf(navArgument("turnoId") { type = NavType.LongType })
     val argCliente = listOf(navArgument("clienteId") { type = NavType.LongType })
+
+    // Al tocar la notificación de un turno, se abre su agenda completa.
+    LaunchedEffect(turnoDesdeAviso) {
+        turnoDesdeAviso?.let {
+            nav.navigate(Rutas.turno(it))
+            onAvisoAbierto()
+        }
+    }
 
     NavHost(navController = nav, startDestination = Rutas.INICIO) {
         composable(Rutas.INICIO) {

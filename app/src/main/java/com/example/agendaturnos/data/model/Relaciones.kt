@@ -3,6 +3,7 @@ package com.example.agendaturnos.data.model
 import androidx.room.Embedded
 import androidx.room.Relation
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 data class ItemConTratamiento(
     @Embedded val item: TurnoTratamiento,
@@ -31,4 +32,13 @@ data class TurnoConDetalle(
 
     fun estaPorCerrar(ahora: LocalDateTime = LocalDateTime.now()): Boolean =
         turno.estado == EstadoTurno.AGENDADO && turno.fechaHora.isBefore(ahora)
+}
+
+/** Cliente con la fecha de su última visita terminada (para el recontacto). */
+data class ClienteRecontacto(
+    @Embedded val cliente: Cliente,
+    val ultimaVisita: LocalDateTime,
+) {
+    fun diasDesdeUltimaVisita(ahora: LocalDateTime = LocalDateTime.now()): Long =
+        ChronoUnit.DAYS.between(ultimaVisita.toLocalDate(), ahora.toLocalDate())
 }

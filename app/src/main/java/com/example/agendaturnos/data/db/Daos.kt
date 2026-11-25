@@ -9,6 +9,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.example.agendaturnos.data.model.Aviso
 import com.example.agendaturnos.data.model.Cliente
+import com.example.agendaturnos.data.model.ClienteRecontacto
 import com.example.agendaturnos.data.model.Foto
 import com.example.agendaturnos.data.model.TratamientoCatalogo
 import com.example.agendaturnos.data.model.Turno
@@ -139,6 +140,25 @@ abstract class TurnoDao {
 
     @Query("SELECT COUNT(*) FROM turnos WHERE clienteId = :clienteId AND estado = 'TERMINADO'")
     abstract fun observarCantidadVisitas(clienteId: Long): Flow<Int>
+
+    @Transaction
+    @Query("SELECT * FROM turnos WHERE estado = 'AGENDADO' AND fechaHora >= :desde ORDER BY fechaHora")
+    abstract suspend fun listarAgendadosDesde(desde: LocalDateTime): List<TurnoConDetalle>
+
+    /** Clientes activos con al menos una visita terminada y ningún turno pendiente. */
+    @Query(
+        """
+        SELECT c.*, MAX(t.fechaHora) AS ultimaVisita
+        FROM clientes c
+        INNER JOIN turnos t ON t.clienteId = c.id
+        WHERE t.estado = 'TERMINADO'
+          AND c.activo = 1
+          AND NOT EXISTS (SELECT 1 FROM turnos f WHERE f.clienteId = c.id AND f.estado = 'AGENDADO')
+        GROUP BY c.id
+        ORDER BY ultimaVisita
+        """
+    )
+    abstract fun observarCandidatosRecontacto(): Flow<List<ClienteRecontacto>>
 }
 
 @Dao
@@ -166,6 +186,9 @@ interface AvisoDao {
 
     @Query("SELECT * FROM avisos WHERE turnoId = :turnoId")
     suspend fun deTurno(turnoId: Long): List<Aviso>
+
+    @Query("SELECT * FROM avisos WHERE tipo = 'RECONTACTO'")
+    fun observarRecontactos(): Flow<List<Aviso>>
 
     @Query("DELETE FROM avisos WHERE turnoId = :turnoId")
     suspend fun borrarDeTurno(turnoId: Long)
