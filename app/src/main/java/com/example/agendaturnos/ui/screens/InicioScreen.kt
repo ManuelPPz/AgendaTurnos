@@ -57,6 +57,7 @@ import com.example.agendaturnos.data.AgendaRepository
 import com.example.agendaturnos.data.Respaldo
 import com.example.agendaturnos.data.model.ClienteRecontacto
 import com.example.agendaturnos.data.model.TurnoConDetalle
+import com.example.agendaturnos.drive.DriveRespaldo
 import com.example.agendaturnos.ui.abrirWhatsApp
 import com.example.agendaturnos.ui.formatoFechaHora
 import com.example.agendaturnos.ui.navigation.Rutas
@@ -99,8 +100,10 @@ fun InicioScreen(
     }
     var exactasOk by remember { mutableStateOf(programador.puedeExactas()) }
     var ultimoRespaldo by remember { mutableStateOf(Respaldo.ultimoRespaldo(context)) }
+    var cuentaDrive by remember { mutableStateOf(DriveRespaldo.cuenta(context)) }
     LifecycleResumeEffect(Unit) {
         ultimoRespaldo = Respaldo.ultimoRespaldo(context)
+        cuentaDrive = DriveRespaldo.cuenta(context)
         val antes = exactasOk
         exactasOk = programador.puedeExactas()
         if (!antes && exactasOk) scope.launch { repo.reprogramarTodosLosAvisos() }
@@ -187,7 +190,20 @@ fun InicioScreen(
 
             val diasSinRespaldo = ultimoRespaldo?.let { ChronoUnit.DAYS.between(it.toLocalDate(), LocalDate.now()) }
             val hayDatos = porCerrar.isNotEmpty() || proximos.isNotEmpty() || recontactar.isNotEmpty()
-            if (hayDatos && (diasSinRespaldo == null || diasSinRespaldo >= 14)) {
+            if (!hayDatos && cuentaDrive == null) {
+                item {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("¿Cambiaste de celular? Recuperá tus datos desde Google Drive.")
+                            TextButton(onClick = { onNavegar(Rutas.RESPALDO) }) { Text("Conectar con Google Drive") }
+                        }
+                    }
+                }
+            }
+            if (hayDatos && cuentaDrive == null && (diasSinRespaldo == null || diasSinRespaldo >= 14)) {
                 item {
                     Card(
                         Modifier.fillMaxWidth(),

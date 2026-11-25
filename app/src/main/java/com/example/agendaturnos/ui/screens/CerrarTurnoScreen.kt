@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.example.agendaturnos.data.AgendaRepository
 import com.example.agendaturnos.data.AlmacenFotos
 import com.example.agendaturnos.data.model.TipoFoto
+import com.example.agendaturnos.drive.RespaldoDriveWorker
 import com.example.agendaturnos.data.model.TurnoConDetalle
 import com.example.agendaturnos.data.model.TurnoTratamiento
 import com.example.agendaturnos.ui.components.ImagenArchivo
@@ -162,6 +163,7 @@ fun CerrarTurnoScreen(
                 repo.cancelarTurno(turnoId, motivo)
             }
             guardando = false
+            RespaldoDriveWorker.respaldarAhora(context)
             onListo()
         }
     }

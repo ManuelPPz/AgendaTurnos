@@ -5,7 +5,10 @@ import android.net.Uri
 import com.example.agendaturnos.data.db.AgendaDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.content.Intent
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -24,10 +27,21 @@ object Respaldo {
     private const val CLAVE_ULTIMO = "ultimo"
 
     suspend fun exportar(ctx: Context, db: AgendaDatabase, destino: Uri) = withContext(Dispatchers.IO) {
+        val salida = ctx.contentResolver.openOutputStream(destino) ?: error("No se pudo crear el archivo")
+        exportarA(ctx, db, salida)
+        marcarRespaldo(ctx)
+    }
+
+    fun marcarRespaldo(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong(CLAVE_ULTIMO, System.currentTimeMillis()).apply()
+    }
+
+    /** Escribe el .zip del respaldo en [salida] (y la cierra). */
+    fun exportarA(ctx: Context, db: AgendaDatabase, salida: OutputStream) {
         // Vuelca al archivo principal los cambios que SQLite tiene en el diario (WAL).
         db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { it.moveToFirst() }
         val archivoDb = ctx.getDatabasePath(NOMBRE_DB)
-        val salida = ctx.contentResolver.openOutputStream(destino) ?: error("No se pudo crear el archivo")
         ZipOutputStream(salida).use { zip ->
             zip.putNextEntry(ZipEntry(NOMBRE_DB))
             archivoDb.inputStream().use { it.copyTo(zip) }
@@ -38,8 +52,6 @@ object Respaldo {
                 zip.closeEntry()
             }
         }
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong(CLAVE_ULTIMO, System.currentTimeMillis()).apply()
     }
 
     /**
@@ -48,8 +60,13 @@ object Respaldo {
      * Después de restaurar hay que reiniciar la app.
      */
     suspend fun restaurar(ctx: Context, db: AgendaDatabase, origen: Uri): Boolean = withContext(Dispatchers.IO) {
-        val temporal = File(ctx.cacheDir, "restaurar").apply { deleteRecursively(); mkdirs() }
         val entrada = ctx.contentResolver.openInputStream(origen) ?: return@withContext false
+        restaurarDesde(ctx, db, entrada)
+    }
+
+    /** Igual que [restaurar], leyendo el .zip desde [entrada]. */
+    fun restaurarDesde(ctx: Context, db: AgendaDatabase, entrada: InputStream): Boolean {
+        val temporal = File(ctx.cacheDir, "restaurar").apply { deleteRecursively(); mkdirs() }
         ZipInputStream(entrada).use { zip ->
             var e = zip.nextEntry
             while (e != null) {
@@ -68,7 +85,7 @@ object Respaldo {
         val nuevaDb = File(temporal, NOMBRE_DB)
         if (!nuevaDb.exists() || !esSqlite(nuevaDb)) {
             temporal.deleteRecursively()
-            return@withContext false
+            return false
         }
 
         db.close()
@@ -80,7 +97,16 @@ object Respaldo {
         fotos.deleteRecursively()
         File(temporal, CARPETA_FOTOS).takeIf { it.exists() }?.copyRecursively(fotos, overwrite = true)
         temporal.deleteRecursively()
-        true
+        return true
+    }
+
+    /** Reinicia la app (después de restaurar, para abrir la base nueva). */
+    fun reiniciarApp(ctx: Context) {
+        ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.let { i ->
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            ctx.startActivity(i)
+        }
+        Runtime.getRuntime().exit(0)
     }
 
     fun ultimoRespaldo(ctx: Context): LocalDateTime? {

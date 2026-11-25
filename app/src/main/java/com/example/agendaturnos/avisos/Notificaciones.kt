@@ -19,6 +19,7 @@ object Notificaciones {
     const val CANAL_RECONTACTO = "recontacto"
     const val EXTRA_TURNO = "turnoId"
     private const val ID_RECONTACTO = -1
+    private const val ID_DRIVE = -2
 
     fun crearCanales(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
@@ -64,6 +65,22 @@ object Notificaciones {
             NotificationManagerCompat.from(ctx).notify(turnoId.toInt(), n)
         } catch (e: SecurityException) {
             // El usuario quitó el permiso de notificaciones
+        }
+    }
+
+    fun mostrarReconectarDrive(ctx: Context) {
+        if (!puedeNotificar(ctx)) return
+        val n = NotificationCompat.Builder(ctx, CANAL_RECONTACTO)
+            .setSmallIcon(R.drawable.ic_notificacion)
+            .setContentTitle("El respaldo en Google Drive se pausó")
+            .setContentText("Abrí la app → Respaldo y volvé a conectar tu cuenta.")
+            .setContentIntent(abrirApp(ctx, ID_DRIVE, null))
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(ctx).notify(ID_DRIVE, n)
+        } catch (e: SecurityException) {
+            // Sin permiso
         }
     }
 
