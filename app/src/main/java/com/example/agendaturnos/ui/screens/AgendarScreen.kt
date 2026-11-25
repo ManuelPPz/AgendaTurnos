@@ -145,7 +145,7 @@ private fun FormularioAgenda(
         .collectAsStateWithLifecycle(initialValue = null)
     val ultimo by remember(clienteId) { repo.ultimoTerminadoDeCliente(clienteId) }
         .collectAsStateWithLifecycle(initialValue = null)
-    val turno = remember(clienteId) { TurnoEditorState() }
+    val turno = rememberSaveable(clienteId, saver = TurnoEditorState.Guardador) { TurnoEditorState() }
 
     var intento by remember { mutableStateOf(false) }
     var guardando by remember { mutableStateOf(false) }

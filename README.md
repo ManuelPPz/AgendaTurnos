@@ -2,13 +2,16 @@
 
 App Android para llevar la agenda de turnos de una profesional de podología, auriculoterapia y manicura, desde la perspectiva de quien atiende.
 
-## Funcionalidades (en desarrollo)
+## Funcionalidades
 
-- Clientes: alta, edición, búsqueda sin acentos, perfil con historial resumido.
+- Clientes: alta, edición, archivo, búsqueda sin acentos y perfil con resumen de visitas.
 - Catálogo de tratamientos con precio base editable.
-- Turnos con uno o varios tratamientos, a domicilio o en consultorio.
-- Turnos por cerrar, cancelación con motivo, reprogramación.
-- Próximamente: cierre con fotos antes/después, historial, avisos (5 h y 1 h 30 antes) y recontacto a los 20 días.
+- Turnos con uno o varios tratamientos, a domicilio o en consultorio; editar, reprogramar y cancelar.
+- Inicio con turnos por cerrar, próximos turnos agrupados (Hoy, Mañana, Esta semana, Más adelante) y clientes para recontactar.
+- Cierre de turno con precio final, descripción y fotos de antes y después.
+- Historial por cliente y detalle de cada tratamiento con fotos.
+- Avisos 5 h y 1 h 30 antes de cada turno; aviso diario de clientes con 20 días sin turno (WhatsApp prearmado).
+- Respaldo completo (base de datos + fotos) en un .zip, y restauración.
 
 ## Stack
 

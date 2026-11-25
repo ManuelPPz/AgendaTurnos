@@ -68,7 +68,7 @@ fun NuevoClienteTurnoScreen(
     var preferencias by rememberSaveable { mutableStateOf("") }
     var genero by rememberSaveable { mutableStateOf<Genero?>(null) }
     var nacimiento by rememberSaveable { mutableStateOf<String?>(null) }
-    val turno = remember { TurnoEditorState() }
+    val turno = rememberSaveable(saver = TurnoEditorState.Guardador) { TurnoEditorState() }
 
     var intento by remember { mutableStateOf(false) }
     var guardando by remember { mutableStateOf(false) }

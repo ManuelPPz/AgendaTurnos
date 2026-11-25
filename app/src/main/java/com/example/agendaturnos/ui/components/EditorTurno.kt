@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
@@ -115,6 +116,31 @@ class TurnoEditorState(
     }
 
     companion object {
+        /** Para rememberSaveable: conserva el formulario al girar el celular. */
+        val Guardador = listSaver<TurnoEditorState, String>(
+            save = { e ->
+                listOf(
+                    e.fecha?.toString() ?: "",
+                    e.hora?.toString() ?: "",
+                    e.lugar.name,
+                    e.direccion,
+                    e.notas,
+                ) + e.items.flatMap { listOf(it.tratamientoId.toString(), it.nombre, it.precio) }
+            },
+            restore = { l ->
+                TurnoEditorState(
+                    fecha = l[0].takeIf { it.isNotEmpty() }?.let(LocalDate::parse),
+                    hora = l[1].takeIf { it.isNotEmpty() }?.let(LocalTime::parse),
+                    lugar = Lugar.valueOf(l[2]),
+                    direccion = l[3],
+                    notas = l[4],
+                    itemsIniciales = l.drop(5).chunked(3).map { (id, nombre, precio) ->
+                        ItemEditable(id.toLong(), nombre, precio)
+                    },
+                )
+            },
+        )
+
         fun desde(d: TurnoConDetalle) = TurnoEditorState(
             fecha = d.turno.fechaHora.toLocalDate(),
             hora = d.turno.fechaHora.toLocalTime(),

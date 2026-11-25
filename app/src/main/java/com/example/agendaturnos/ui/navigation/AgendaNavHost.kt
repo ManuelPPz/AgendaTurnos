@@ -21,6 +21,7 @@ import com.example.agendaturnos.ui.screens.CatalogoScreen
 import com.example.agendaturnos.ui.screens.ClienteFormScreen
 import com.example.agendaturnos.ui.screens.InicioScreen
 import com.example.agendaturnos.ui.screens.PerfilClienteScreen
+import com.example.agendaturnos.ui.screens.RespaldoScreen
 
 @Composable
 fun AgendaNavHost(
@@ -85,6 +86,7 @@ fun AgendaNavHost(
             )
         }
         composable(Rutas.CATALOGO) { CatalogoScreen(repo = repo, onVolver = volver) }
+        composable(Rutas.RESPALDO) { RespaldoScreen(onVolver = volver) }
         composable(Rutas.TURNO, argTurno) { entry ->
             val id = entry.arguments?.getLong("turnoId") ?: 0L
             TurnoDetalleScreen(

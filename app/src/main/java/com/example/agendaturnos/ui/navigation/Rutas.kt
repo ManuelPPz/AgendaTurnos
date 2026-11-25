@@ -6,6 +6,7 @@ object Rutas {
     const val NUEVO_CLIENTE = "nuevo_cliente"
     const val AGENDAR = "agendar?clienteId={clienteId}"
     const val CATALOGO = "catalogo"
+    const val RESPALDO = "respaldo"
 
     const val TURNO = "turno/{turnoId}"
     const val EDITAR_TURNO = "editar_turno/{turnoId}"

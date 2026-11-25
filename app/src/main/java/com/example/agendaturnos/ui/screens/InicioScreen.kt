@@ -54,13 +54,16 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.agendaturnos.AgendaApp
 import com.example.agendaturnos.data.AgendaRepository
+import com.example.agendaturnos.data.Respaldo
 import com.example.agendaturnos.data.model.ClienteRecontacto
 import com.example.agendaturnos.data.model.TurnoConDetalle
 import com.example.agendaturnos.ui.abrirWhatsApp
 import com.example.agendaturnos.ui.formatoFechaHora
 import com.example.agendaturnos.ui.navigation.Rutas
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,7 +98,9 @@ fun InicioScreen(
         }
     }
     var exactasOk by remember { mutableStateOf(programador.puedeExactas()) }
+    var ultimoRespaldo by remember { mutableStateOf(Respaldo.ultimoRespaldo(context)) }
     LifecycleResumeEffect(Unit) {
+        ultimoRespaldo = Respaldo.ultimoRespaldo(context)
         val antes = exactasOk
         exactasOk = programador.puedeExactas()
         if (!antes && exactasOk) scope.launch { repo.reprogramarTodosLosAvisos() }
@@ -117,6 +122,7 @@ fun InicioScreen(
                                 "Nuevo cliente + turno" to Rutas.NUEVO_CLIENTE,
                                 "Agendar cliente existente" to Rutas.agendar(),
                                 "Tratamientos" to Rutas.CATALOGO,
+                                "Respaldo" to Rutas.RESPALDO,
                             ).forEach { (texto, ruta) ->
                                 DropdownMenuItem(
                                     text = { Text(texto) },
@@ -179,6 +185,25 @@ fun InicioScreen(
                 }
             }
 
+            val diasSinRespaldo = ultimoRespaldo?.let { ChronoUnit.DAYS.between(it.toLocalDate(), LocalDate.now()) }
+            val hayDatos = porCerrar.isNotEmpty() || proximos.isNotEmpty() || recontactar.isNotEmpty()
+            if (hayDatos && (diasSinRespaldo == null || diasSinRespaldo >= 14)) {
+                item {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(
+                                if (diasSinRespaldo == null) "Todavía no hiciste ningún respaldo de tus datos."
+                                else "Hace $diasSinRespaldo días que no hacés un respaldo.",
+                            )
+                            TextButton(onClick = { onNavegar(Rutas.RESPALDO) }) { Text("Hacer respaldo") }
+                        }
+                    }
+                }
+            }
+
             if (porCerrar.isNotEmpty()) {
                 item { TituloSeccion("Turnos por cerrar") }
                 items(porCerrar, key = { "c${it.turno.id}" }) { t ->
@@ -195,8 +220,18 @@ fun InicioScreen(
                     )
                 }
             } else {
-                items(proximos, key = { "p${it.turno.id}" }) { t ->
-                    TarjetaTurno(t, porCerrar = false, onClick = { onAbrirTurno(t.turno.id) }, onTerminar = {})
+                proximos.groupBy { grupoDeFecha(it.turno.fechaHora.toLocalDate()) }.forEach { (grupo, lista) ->
+                    item(key = "g$grupo") {
+                        Text(
+                            grupo,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    items(lista, key = { "p${it.turno.id}" }) { t ->
+                        TarjetaTurno(t, porCerrar = false, onClick = { onAbrirTurno(t.turno.id) }, onTerminar = {})
+                    }
                 }
             }
 
@@ -218,6 +253,14 @@ fun InicioScreen(
             }
         }
     }
+}
+
+/** Agrupa los próximos turnos: Hoy, Mañana, Esta semana o Más adelante. */
+private fun grupoDeFecha(fecha: LocalDate, hoy: LocalDate = LocalDate.now()): String = when {
+    fecha == hoy -> "Hoy"
+    fecha == hoy.plusDays(1) -> "Mañana"
+    !fecha.isAfter(hoy.plusDays(7)) -> "Esta semana"
+    else -> "Más adelante"
 }
 
 private fun mensajeRecontacto(nombre: String): String {
