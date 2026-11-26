@@ -1,7 +1,9 @@
 package com.example.agendaturnos.ui.navigation
 
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavType
@@ -25,6 +27,9 @@ import com.example.agendaturnos.ui.screens.InicioScreen
 import com.example.agendaturnos.ui.screens.PerfilClienteScreen
 import com.example.agendaturnos.ui.screens.RespaldoScreen
 
+/** 300 ms con aceleración y frenado suaves. */
+private val animacion = tween<IntOffset>(durationMillis = 300, easing = FastOutSlowInEasing)
+
 @Composable
 fun AgendaNavHost(
     repo: AgendaRepository,
@@ -47,11 +52,20 @@ fun AgendaNavHost(
     NavHost(
         navController = nav,
         startDestination = Rutas.INICIO,
-        // Sin fundido entre pantallas: el cambio es inmediato.
-        enterTransition = { EnterTransition.None },
-        exitTransition = { ExitTransition.None },
-        popEnterTransition = { EnterTransition.None },
-        popExitTransition = { ExitTransition.None },
+        // Deslizamiento suave (sin fundido): la pantalla nueva entra desde la derecha
+        // y la anterior se corre un poco; al volver, al revés.
+        enterTransition = {
+            slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, animacion)
+        },
+        exitTransition = {
+            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, animacion) { it / 4 }
+        },
+        popEnterTransition = {
+            slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, animacion) { it / 4 }
+        },
+        popExitTransition = {
+            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, animacion)
+        },
     ) {
         composable(Rutas.INICIO) {
             InicioScreen(
