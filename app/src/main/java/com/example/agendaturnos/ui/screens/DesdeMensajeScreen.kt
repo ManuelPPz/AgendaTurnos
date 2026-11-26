@@ -88,7 +88,7 @@ fun DesdeMensajeScreen(
     LaunchedEffect(resultado, elegido) {
         val r = resultado ?: return@LaunchedEffect
         val rem = r.remitentes.getOrNull(elegido)
-        nombre = rem?.nombre ?: r.nombreEnTexto ?: ""
+        nombre = r.nombreEnTexto ?: rem?.nombre ?: ""
         telefono = rem?.telefono ?: r.telefonoEnTexto ?: ""
     }
 
@@ -203,12 +203,24 @@ fun DesdeMensajeScreen(
 
             // ----- Turno -----
             Text("Turno", style = MaterialTheme.typography.titleMedium)
+            if (r.pidioReagendar) {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                ) {
+                    Text(
+                        "Ojo: al final de la charla la clienta pidió cancelar o cambiar el turno. " +
+                            "Revisá la fecha antes de confirmar.",
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+            }
             Dato("Día", r.fecha?.format(formatoDia)?.replaceFirstChar { it.uppercase() } ?: "No se encontró — lo elegís en el próximo paso")
             Dato("Hora", r.hora?.format(formatoHora) ?: "No se encontró — la elegís en el próximo paso")
             Dato(
                 "Lugar",
                 when (r.domicilio) {
-                    true -> "A domicilio" + (r.direccion?.let { " ($it)" } ?: "")
+                    true -> "A domicilio" + (r.direccion?.let { " — $it" } ?: "")
                     false -> "En consultorio"
                     null -> "No se dijo (queda en consultorio)"
                 },

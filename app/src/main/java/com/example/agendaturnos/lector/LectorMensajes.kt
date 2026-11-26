@@ -12,7 +12,9 @@ data class Remitente(val nombre: String?, val telefono: String?, val mensajes: I
 
 /** Lo que se pudo deducir de una conversación. Todo es opcional: lo que falta se completa a mano. */
 data class ResultadoLectura(
+    /** Posibles clientas (ya sin la profesional), de la que más escribió a la que menos. */
     val remitentes: List<Remitente>,
+    /** Nombre que la persona dio en el chat ("Sara Palaian", "soy Laura"…). */
     val nombreEnTexto: String?,
     val telefonoEnTexto: String?,
     val fecha: LocalDate?,
@@ -20,7 +22,10 @@ data class ResultadoLectura(
     val tratamientoIds: List<Long>,
     /** true = a domicilio, false = en consultorio, null = no se dijo. */
     val domicilio: Boolean?,
+    /** Dirección o zona que dio la persona. */
     val direccion: String?,
+    /** La clienta pidió cancelar o cambiar el turno al final de la charla. */
+    val pidioReagendar: Boolean = false,
 )
 
 /**
@@ -30,24 +35,33 @@ data class ResultadoLectura(
  */
 object LectorMensajes {
 
+    private data class Mensaje(val quien: String?, val fecha: LocalDate?, val texto: String) {
+        val norm: String = normalizar(texto)
+    }
+
     // ---------- Encabezados de WhatsApp ----------
-    // "[26/11/26, 14:03] Laura: Hola"  (copiar / compartir)
+    // "[23/11, 06:56] Laura: Hola"  o  "[23/11/26, 06:56:10] Laura: Hola"  (copiar / compartir)
     private val encabezadoCorchetes = Regex(
-        """^\[(\d{1,2}/\d{1,2}/\d{2,4}),?\s+(\d{1,2}:\d{2})(?::\d{2})?(?:\s*[ap]\.?\s*m\.?)?]\s*([^:]{1,60}?):\s?(.*)$""",
+        """^\[(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?,?\s+(\d{1,2}:\d{2})(?::\d{2})?(?:\s*[ap]\.?\s*m\.?)?]\s*([^:]{1,60}?):\s?(.*)$""",
         RegexOption.IGNORE_CASE,
     )
-    // "26/11/26, 14:03 - Laura: Hola"  (exportar chat)
+    // "23/11/26, 06:56 - Laura: Hola"  (exportar chat)
     private val encabezadoGuion = Regex(
-        """^(\d{1,2}/\d{1,2}/\d{2,4}),?\s+(\d{1,2}:\d{2})(?:\s*[ap]\.?\s*m\.?)?\s+-\s+([^:]{1,60}?):\s?(.*)$""",
+        """^(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?,?\s+(\d{1,2}:\d{2})(?:\s*[ap]\.?\s*m\.?)?\s+-\s+([^:]{1,60}?):\s?(.*)$""",
         RegexOption.IGNORE_CASE,
     )
+    /** Respuestas automáticas de WhatsApp Business: delatan cuál es la cuenta de la profesional. */
+    private val respuestaAutomatica = Regex("""gracias por comunicarte|en este momento no podemos responder|gracias por tu mensaje""")
 
     private val telefonoRegex = Regex("""(?:\+?598[\s-]?)?\b0?9\d[\s-]?\d{3}[\s-]?\d{3}\b""")
-    private val nombreRegex = Regex(
-        """\b(?:[Ss]oy|[Mm]e llamo|[Hh]abla|[Mm]i nombre es)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)?)""",
+    private val nombreDicho = Regex(
+        """(?i)\b(?:me llamo|mi no[mn]bre es|mi no[mn]bre:?|soy)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)""",
     )
-    private val direccionRegex = Regex(
-        """(?im)\b(?:vivo en|mi direcci[oó]n es|direcci[oó]n:?)\s+([^\n]{4,60}?)(?=[!?]|\.(?:\s|$)|$)""",
+    /** Palabras que pueden aparecer donde se espera un nombre pero no lo son. */
+    private val noSonNombres = setOf(
+        "de", "del", "la", "el", "yo", "una", "un", "muy", "nueva", "nuevo", "cliente", "clienta", "gordita", "diabetica", "diabetico",
+        "genial", "gracias", "dale", "ok", "oka", "okey", "perfecto", "perfecta", "si", "sii", "no", "bueno", "buena", "hola", "barbaro",
+        "listo", "joya", "buenisimo", "excelente", "claro", "obvio", "encantada", "encantado", "igualmente", "saludos", "besos", "bien",
     )
 
     private val meses = listOf(
@@ -65,7 +79,7 @@ object LectorMensajes {
      * Con "*" al final se acepta cualquier terminación ("esmalt*" = esmalte, esmaltado…).
      */
     private val sinonimos = mapOf(
-        "podolog" to listOf("podolog*", "pie", "pies", "unero*", "una encarnada", "unas encarnadas", "callo*", "hongo*", "pedicur*"),
+        "podolog" to listOf("podolog*", "pie", "pies", "unero*", "una encarnada", "unas encarnadas", "callo*", "dureza*", "hongo*", "honguito*", "pedicur*"),
         "manicur" to listOf("manicur*", "manos", "esmalt*", "semipermanente*", "kapping", "unas de las manos", "esculpid*"),
         "auriculo" to listOf("auriculo*", "oreja*", "semilla*"),
     )
@@ -82,52 +96,160 @@ object LectorMensajes {
         return "${d.substring(0, 3)} ${d.substring(3, 6)} ${d.substring(6)}"
     }
 
+    /** "jorge yeye" → "Jorge Yeye". */
+    private fun capitalizar(t: String) = t.trim().split(Regex("\\s+"))
+        .joinToString(" ") { p -> p.lowercase().replaceFirstChar { it.uppercase() } }
+
+    /** Saca emojis y símbolos de los bordes del nombre del contacto ("🥰sol Nuñez" → "sol Nuñez"). */
+    private fun limpiarNombreContacto(t: String) =
+        t.trim().dropWhile { !it.isLetterOrDigit() && it != '+' }.dropLastWhile { !it.isLetterOrDigit() }
+
     fun analizar(
         texto: String,
         tratamientos: List<Pair<Long, String>>,
         ahora: LocalDateTime = LocalDateTime.now(),
         nombresPropios: Set<String> = emptySet(),
     ): ResultadoLectura {
-        // 1) Separar mensajes y remitentes
-        val cuerpos = mutableListOf<String>()
-        val conteo = linkedMapOf<String, Int>()
+        val hoy = ahora.toLocalDate()
+
+        // 1) Separar mensajes: quién, qué día y qué dijo
+        val mensajes = mutableListOf<Mensaje>()
         for (linea in texto.lines()) {
-            val m = encabezadoCorchetes.find(linea.trim()) ?: encabezadoGuion.find(linea.trim())
+            val l = linea.trim()
+            val m = encabezadoCorchetes.find(l) ?: encabezadoGuion.find(l)
             if (m != null) {
-                val quien = m.groupValues[3].trim().trimStart('‪', '‎').trimEnd('‬')
-                conteo[quien] = (conteo[quien] ?: 0) + 1
-                cuerpos += m.groupValues[4]
-            } else if (linea.isNotBlank()) {
-                cuerpos += linea
+                val g = m.groupValues
+                mensajes += Mensaje(limpiarNombreContacto(g[5]), fechaDeEncabezado(g[1], g[2], g[3], hoy), g[6])
+            } else if (l.isNotEmpty()) {
+                val ultimo = mensajes.lastOrNull()
+                if (ultimo != null && ultimo.quien != null) {
+                    mensajes[mensajes.lastIndex] = ultimo.copy(texto = ultimo.texto + "\n" + l)
+                } else {
+                    mensajes += Mensaje(null, null, l)
+                }
             }
         }
-        val propios = nombresPropios.map(::normalizar).toSet()
-        val remitentes = conteo.entries
-            .filter { normalizar(it.key) !in propios }
+
+        // 2) Quién es la profesional: la que manda respuestas automáticas, o un nombre ya conocido
+        val propios = nombresPropios.map(::normalizar).toMutableSet()
+        mensajes.filter { it.quien != null && respuestaAutomatica.containsMatchIn(it.norm) }
+            .forEach { propios += normalizar(it.quien!!) }
+        fun esPropio(m: Mensaje) = m.quien != null && normalizar(m.quien) in propios
+        val utiles = mensajes.filterNot { esPropio(it) && respuestaAutomatica.containsMatchIn(it.norm) }
+
+        val remitentes = utiles.mapNotNull { it.quien }.filter { normalizar(it) !in propios }
+            .groupingBy { it }.eachCount().entries
             .sortedByDescending { it.value }
             .map { (quien, n) ->
                 val tel = normalizarTelefono(quien)?.takeIf { quien.count(Char::isDigit) >= 8 }
                 Remitente(nombre = if (tel != null) null else quien, telefono = tel, mensajes = n)
             }
+        // Si se sabe quién es la profesional, se leen datos personales solo de lo que escribió la clienta
+        val haySeparacion = propios.isNotEmpty() && utiles.any { esPropio(it) }
+        fun esDeClienta(m: Mensaje) = !haySeparacion || !esPropio(m)
 
-        val original = cuerpos.joinToString("\n")
-        val norm = normalizar(original)
+        // 3) Nombre
+        val nombreEnTexto = buscarNombre(utiles, ::esPropio, ::esDeClienta)
 
-        // 2) Datos de la persona escritos en el texto
-        val nombreEnTexto = nombreRegex.findAll(original).lastOrNull()?.groupValues?.get(1)
-        val telefonoEnTexto = telefonoRegex.findAll(original).mapNotNull { normalizarTelefono(it.value) }.lastOrNull()
-        val direccion = direccionRegex.findAll(original).lastOrNull()?.groupValues?.get(1)?.trim()
+        // 4) Teléfono y dirección (de lo que escribió la clienta)
+        val textoClienta = utiles.filter(::esDeClienta).joinToString("\n") { it.texto }
+        val telefonoEnTexto = telefonoRegex.findAll(textoClienta).mapNotNull { normalizarTelefono(it.value) }.lastOrNull()
+        val direccion = buscarDireccion(utiles.filter(::esDeClienta).map { it.texto })
 
-        // 3) Fecha y hora: gana la última mencionada (suele ser lo que se acordó)
-        val sinTelefonos = telefonoRegex.replace(norm) { " ".repeat(it.value.length) }
-        val fecha = buscarFecha(sinTelefonos, ahora.toLocalDate())
-        val hora = buscarHora(sinTelefonos)
+        // 5) Fecha y hora: gana la última mencionada (suele ser lo que se acordó)
+        var mejorFecha: Pair<Long, LocalDate>? = null
+        var mejorHora: Pair<Long, LocalTime>? = null
+        var mensajeDeLaFecha = -1
+        utiles.forEachIndexed { i, m ->
+            val t = telefonoRegex.replace(m.norm) { " ".repeat(it.value.length) }
+            buscarFecha(t, m.fecha ?: hoy)?.let { (pos, f) -> mejorFecha = (i * 100_000L + pos) to f; mensajeDeLaFecha = i }
+            buscarHora(t)?.let { (pos, h) -> mejorHora = (i * 100_000L + pos) to h }
+        }
 
-        // 4) Tratamientos y lugar
-        val ids = tratamientos.filter { (_, nombre) -> menciona(norm, nombre) }.map { it.first }
-        val domicilio = buscarLugar(norm)
+        // 6) Tratamientos, lugar y si al final pidió cambiar el turno
+        val todo = utiles.joinToString("\n") { it.norm }
+        val ids = tratamientos.filter { (_, nombre) -> menciona(todo, nombre) }.map { it.first }
+        // ¿Después de lo último acordado, la clienta pidió cancelar o cambiar?
+        val despuesDeAcordar = utiles.drop(mensajeDeLaFecha + 1).filter(::esDeClienta).joinToString(" ") { it.norm }
+        val reagendar = Regex("""\b(reagend\w*|re agend\w*|cancel\w*|suspend\w*|postergar|no voy a poder|no puedo ir|no voy a estar|cambiar (?:el|la) (?:turno|fecha|hora|dia))""")
+            .containsMatchIn(despuesDeAcordar)
 
-        return ResultadoLectura(remitentes, nombreEnTexto, telefonoEnTexto, fecha, hora, ids, domicilio, direccion)
+        return ResultadoLectura(
+            remitentes = remitentes,
+            nombreEnTexto = nombreEnTexto,
+            telefonoEnTexto = telefonoEnTexto,
+            fecha = mejorFecha?.second,
+            hora = mejorHora?.second,
+            tratamientoIds = ids,
+            domicilio = buscarLugar(todo),
+            direccion = direccion,
+            pidioReagendar = reagendar,
+        )
+    }
+
+    private fun fechaDeEncabezado(d: String, m: String, a: String, hoy: LocalDate): LocalDate? {
+        val anio = a.toIntOrNull()?.let { if (it < 100) 2000 + it else it }
+        val f = runCatching { LocalDate.of(anio ?: hoy.year, m.toInt(), d.toInt()) }.getOrNull() ?: return null
+        // Sin año: un mensaje no puede ser del futuro, así que sería del año pasado
+        return if (anio == null && f.isAfter(hoy.plusDays(1))) f.minusYears(1) else f
+    }
+
+    /**
+     * El nombre, en orden de confianza:
+     * 1. la respuesta a "¿cómo es tu nombre?"; 2. "me llamo / mi nombre es / soy X";
+     * 3. "un gusto X" dicho por la profesional.
+     */
+    private fun buscarNombre(
+        mensajes: List<Mensaje>,
+        esPropio: (Mensaje) -> Boolean,
+        esDeClienta: (Mensaje) -> Boolean,
+    ): String? {
+        // 1. Respuesta a la pregunta por el nombre
+        mensajes.forEachIndexed { i, m ->
+            val preguntaNombre = esPropio(m) && Regex("""\bno[mn]bre\b""").containsMatchIn(m.norm) &&
+                (m.texto.contains('?') || Regex("""\b(como es|cual es|dime|decime|pasame|me das|me decis)\b""").containsMatchIn(m.norm))
+            if (preguntaNombre) {
+                val respuesta = mensajes.drop(i + 1).take(3).firstOrNull { esDeClienta(it) && !esPropio(it) }
+                val t = respuesta?.texto?.trim()?.trimEnd('.', '!')
+                if (t != null && t.length <= 40 && Regex("""^[\p{L}]+(?:\s+[\p{L}]+){0,3}$""").matches(t)) {
+                    val palabras = normalizar(t).split(" ")
+                    if (palabras.none { it in noSonNombres }) return capitalizar(t)
+                }
+            }
+        }
+        // 2. Lo dice ella
+        mensajes.filter { esDeClienta(it) && !esPropio(it) || !mensajes.any(esPropio) }.forEach { m ->
+            nombreDicho.findAll(m.texto).lastOrNull()?.let { r ->
+                val n = r.groupValues[1]
+                val primera = normalizar(n.split(" ").first())
+                if (primera !in noSonNombres) {
+                    val limpio = n.split(" ").takeWhile { normalizar(it) !in noSonNombres }.joinToString(" ")
+                    if (limpio.isNotBlank()) return capitalizar(limpio)
+                }
+            }
+        }
+        // 3. "Un gusto Patricia" (lo dice la profesional)
+        mensajes.filter(esPropio).forEach { m ->
+            Regex("""(?i)\bun gusto\s+([a-záéíóúñ]+)""").find(m.texto)?.let { r ->
+                val n = r.groupValues[1]
+                if (normalizar(n) !in noSonNombres && normalizar(n) != "soy") return capitalizar(n)
+            }
+        }
+        return null
+    }
+
+    /** "vivo en…", "mi dirección es…" pesan más que la zona ("soy de…", "estoy en…"). */
+    private fun buscarDireccion(textos: List<String>): String? {
+        val fuerte = Regex("""(?im)\b(?:vivo en|mi direcci[oó]n es|direcci[oó]n:?)\s+([^\n]{4,60}?)(?=[!?]|\.(?:\s|$)|$)""")
+        val zona = Regex("""(?im)\b(?:soy de|somos de|estoy en|estoy frente (?:a|al)|somos)\s+([^\n]{3,50}?)(?=[!?,]|\.(?:\s|$)|$| cuanto| cuando)""")
+        textos.asReversed().forEach { t -> fuerte.find(t)?.let { return it.groupValues[1].trim() } }
+        textos.forEach { t ->
+            zona.find(t)?.let { r ->
+                val z = r.groupValues[1].trim()
+                if (normalizar(z) !in setOf("sanatorio", "el sanatorio", "casa", "camino", "el trabajo")) return z
+            }
+        }
+        return null
     }
 
     private fun menciona(texto: String, nombreTratamiento: String): Boolean {
@@ -142,7 +264,7 @@ object LectorMensajes {
     }
 
     private fun buscarLugar(t: String): Boolean? {
-        val casa = Regex("""\b(a domicilio|domicilio|(?:a|en|por) (?:mi |tu )?casa|venis a|vengas a|venir a)\b""")
+        val casa = Regex("""\b(a domicilio|domicilio|(?:a|en|por) (?:mi |tu )?casa|venis a|vengas a|venir a|ubicacion|me pases? la ubicacion)\b""")
         val consultorio = Regex("""\b(consultorio|voy yo|voy para (?:alla|ahi)|paso por (?:alla|ahi)|voy a tu)\b""")
         val ultCasa = casa.findAll(t).lastOrNull()?.range?.first ?: -1
         val ultCons = consultorio.findAll(t).lastOrNull()?.range?.first ?: -1
@@ -152,7 +274,8 @@ object LectorMensajes {
         }
     }
 
-    private fun buscarFecha(t: String, hoy: LocalDate): LocalDate? {
+    /** Devuelve (posición, fecha) de la última fecha mencionada en [t], relativa al día [base]. */
+    private fun buscarFecha(t: String, base: LocalDate): Pair<Int, LocalDate>? {
         val candidatas = mutableListOf<Pair<Int, LocalDate>>()
         val usado = BooleanArray(t.length)
         fun agregar(r: IntRange, f: LocalDate?) {
@@ -163,45 +286,59 @@ object LectorMensajes {
         // "28 de noviembre"
         meses.forEachIndexed { i, mes ->
             Regex("""\b(\d{1,2}) de ($mes)\b""").findAll(t).forEach { m ->
-                agregar(m.range, fechaSinAnio(m.groupValues[1].toInt(), i + 1, hoy))
+                agregar(m.range, fechaSinAnio(m.groupValues[1].toInt(), i + 1, base))
             }
         }
         // "28/11", "28-11-2026"
         Regex("""\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b""").findAll(t).forEach { m ->
             val d = m.groupValues[1].toInt(); val mes = m.groupValues[2].toInt()
             val anio = m.groupValues[3].takeIf { it.isNotEmpty() }?.toInt()?.let { if (it < 100) 2000 + it else it }
-            agregar(m.range, if (anio != null) runCatching { LocalDate.of(anio, mes, d) }.getOrNull() else fechaSinAnio(d, mes, hoy))
+            agregar(m.range, if (anio != null) runCatching { LocalDate.of(anio, mes, d) }.getOrNull() else fechaSinAnio(d, mes, base))
         }
-        // "pasado mañana", "mañana" (no "de la mañana"), "hoy"
-        Regex("""\bpasado manana\b""").findAll(t).forEach { agregar(it.range, hoy.plusDays(2)) }
-        Regex("""(?<!de la )(?<!por la )\bmanana\b""").findAll(t).forEach { agregar(it.range, hoy.plusDays(1)) }
-        Regex("""\bhoy\b""").findAll(t).forEach { agregar(it.range, hoy) }
-        // "el jueves", "el jueves que viene"
+        // "miércoles 2", "lunes 30": el día de la semana con ese número
+        Regex("""\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo) (\d{1,2})\b(?!\s*(?:[:.]\d|hs?\b|horas))""").findAll(t).forEach { m ->
+            val dia = dias.getValue(m.groupValues[1]); val n = m.groupValues[2].toInt()
+            val f = (0L..62L).asSequence().map { base.plusDays(it) }.firstOrNull { it.dayOfMonth == n && it.dayOfWeek == dia }
+            agregar(m.range, f ?: base.with(TemporalAdjusters.next(dia)))
+        }
+        // "pasado mañana", "mañana" (no "de la / en la / por la mañana"), "hoy"
+        Regex("""\bpasado manana\b""").findAll(t).forEach { agregar(it.range, base.plusDays(2)) }
+        Regex("""(?<!la )\bmanana\b""").findAll(t).forEach { agregar(it.range, base.plusDays(1)) }
+        Regex("""\bhoy\b""").findAll(t).forEach { agregar(it.range, base) }
+        // "el jueves", "para el miércoles"
         Regex("""\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b""").findAll(t).forEach { m ->
-            agregar(m.range, hoy.with(TemporalAdjusters.next(dias.getValue(m.groupValues[1]))))
+            agregar(m.range, base.with(TemporalAdjusters.next(dias.getValue(m.groupValues[1]))))
         }
         // "el 28" (día del mes)
         Regex("""\b(?:el|para el|dia) (\d{1,2})\b(?!\s*(?:[:.]\d|hs?\b|horas|y (?:media|cuarto)|de la))""").findAll(t).forEach { m ->
             val d = m.groupValues[1].toInt()
             if (d in 1..31) {
-                val esteMes = runCatching { hoy.withDayOfMonth(d) }.getOrNull()
-                agregar(m.range, if (esteMes != null && !esteMes.isBefore(hoy)) esteMes
-                else runCatching { hoy.plusMonths(1).withDayOfMonth(d) }.getOrNull())
+                val esteMes = runCatching { base.withDayOfMonth(d) }.getOrNull()
+                agregar(m.range, if (esteMes != null && !esteMes.isBefore(base)) esteMes
+                else runCatching { base.plusMonths(1).withDayOfMonth(d) }.getOrNull())
             }
         }
-        return candidatas.maxByOrNull { it.first }?.second
+        return candidatas.maxByOrNull { it.first }
     }
 
-    private fun fechaSinAnio(d: Int, mes: Int, hoy: LocalDate): LocalDate? {
-        val f = runCatching { LocalDate.of(hoy.year, mes, d) }.getOrNull() ?: return null
-        return if (f.isBefore(hoy.minusDays(1))) f.plusYears(1) else f
+    private fun fechaSinAnio(d: Int, mes: Int, base: LocalDate): LocalDate? {
+        val f = runCatching { LocalDate.of(base.year, mes, d) }.getOrNull() ?: return null
+        return if (f.isBefore(base.minusDays(1))) f.plusYears(1) else f
     }
 
-    private fun buscarHora(t: String): LocalTime? {
+    /** Devuelve (posición, hora) de la última hora mencionada en [t]. */
+    private fun buscarHora(t: String): Pair<Int, LocalTime>? {
         val candidatas = mutableListOf<Pair<Int, LocalTime>>()
         val usado = BooleanArray(t.length)
+        // "te lleva 1:30", "dura 45", "cuesta 1200": son duraciones o precios, no horas
+        fun esDuracionOPrecio(inicio: Int, fin: Int): Boolean {
+            val antes = t.substring(maxOf(0, inicio - 25), inicio)
+            val despues = t.substring(fin, minOf(t.length, fin + 8))
+            return Regex("""(lleva|dura|demora|tarda|mas o menos|aprox\w*|cuesta|sale|salen|costo|precio|vale|completa|\$|pesos)\s*\S*\s*$""").containsMatchIn(antes) ||
+                Regex("""^\s*(pesos|\$|min)""").containsMatchIn(despues)
+        }
         fun agregar(r: IntRange, h: Int, min: Int, sufijo: String?) {
-            if (r.any { usado[it] }) return
+            if (r.any { usado[it] } || esDuracionOPrecio(r.first, r.last + 1)) return
             var hh = h
             when {
                 sufijo != null && (sufijo.startsWith("tarde") || sufijo.startsWith("noche") || sufijo == "pm") -> if (hh < 12) hh += 12
@@ -213,14 +350,21 @@ object LectorMensajes {
             candidatas += r.first to LocalTime.of(hh, min)
         }
         val sufijo = """(?:\s*(?:hs|h|horas)\.?)?(?:\s*(?:de la (manana|tarde|noche)|(am|pm)))?"""
-        // "a las 15:30", "15.30 hs", "a las 3 y media de la tarde", "a las 10"
-        Regex("""\b(?:a )?las? (\d{1,2})(?:[:.](\d{2})|\s+y\s+(media|cuarto))?$sufijo""").findAll(t).forEach { m ->
+        // "a las 15:30", "a las 3 y media de la tarde", "hora 10", "las 14 horas"
+        Regex("""\b(?:a las?|las?|hora|horario)\s+(\d{1,2})(?:[:.](\d{2})|\s+y\s+(media|cuarto))?$sufijo(?![\d/])""").findAll(t).forEach { m ->
             val min = m.groupValues[2].toIntOrNull() ?: when (m.groupValues[3]) { "media" -> 30; "cuarto" -> 15; else -> 0 }
             agregar(m.range, m.groupValues[1].toInt(), min, m.groupValues[4].ifEmpty { m.groupValues[5] }.ifEmpty { null })
         }
-        Regex("""\b(\d{1,2})[:.](\d{2})$sufijo""").findAll(t).forEach { m ->
+        // "16:30", "10.30 hs"
+        Regex("""\b(\d{1,2})[:.](\d{2})$sufijo(?![\d/])""").findAll(t).forEach { m ->
             agregar(m.range, m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].ifEmpty { m.groupValues[4] }.ifEmpty { null })
         }
+        // "1030" (sin separador): solo si parece una hora de trabajo con minutos redondos
+        Regex("""\b([0-2]?\d)(00|15|30|45)\b(?!\s*(?:pesos|\$))""").findAll(t).forEach { m ->
+            val h = m.groupValues[1].toInt()
+            if (h in 7..21) agregar(m.range, h, m.groupValues[2].toInt(), "am")
+        }
+        // "17hs", "10 h de la mañana"
         Regex("""\b(\d{1,2})\s*(?:hs|h|horas)\b(?:\s*de la (manana|tarde|noche))?""").findAll(t).forEach { m ->
             agregar(m.range, m.groupValues[1].toInt(), 0, m.groupValues[2].ifEmpty { null })
         }
@@ -228,6 +372,6 @@ object LectorMensajes {
             agregar(m.range, m.groupValues[1].toInt(), 0, m.groupValues[2])
         }
         Regex("""\bmediodia\b""").findAll(t).forEach { agregar(it.range, 12, 0, null) }
-        return candidatas.maxByOrNull { it.first }?.second
+        return candidatas.maxByOrNull { it.first }
     }
 }
