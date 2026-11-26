@@ -16,3 +16,6 @@ local.properties
 
 # Vistas previas generadas fuera del proyecto
 /Claude outputs/
+
+# Configuración local de Android Studio
+/.idea/
