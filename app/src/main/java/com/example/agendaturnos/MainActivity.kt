@@ -16,10 +16,16 @@ class MainActivity : ComponentActivity() {
     /** Turno a abrir cuando se toca una notificación. */
     private var turnoDesdeAviso by mutableStateOf<Long?>(null)
 
+    /** Texto compartido desde otra app (WhatsApp → Compartir → Agenda). */
+    private var mensajeCompartido by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) turnoDesdeAviso = intent.turnoDeAviso()
+        if (savedInstanceState == null) {
+            turnoDesdeAviso = intent.turnoDeAviso()
+            mensajeCompartido = intent.textoCompartido()
+        }
         val repo = (application as AgendaApp).repository
         setContent {
             AgendaTurnosTheme {
@@ -27,6 +33,8 @@ class MainActivity : ComponentActivity() {
                     repo = repo,
                     turnoDesdeAviso = turnoDesdeAviso,
                     onAvisoAbierto = { turnoDesdeAviso = null },
+                    mensajeCompartido = mensajeCompartido,
+                    onMensajeAbierto = { mensajeCompartido = null },
                 )
             }
         }
@@ -35,7 +43,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.turnoDeAviso()?.let { turnoDesdeAviso = it }
+        intent.textoCompartido()?.let { mensajeCompartido = it }
     }
+
+    private fun Intent.textoCompartido(): String? =
+        if (action == Intent.ACTION_SEND && type?.startsWith("text/") == true) {
+            getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
 
     private fun Intent.turnoDeAviso(): Long? =
         getLongExtra(Notificaciones.EXTRA_TURNO, 0L).takeIf { it > 0L }

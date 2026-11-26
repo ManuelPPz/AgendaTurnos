@@ -7,6 +7,7 @@ object Rutas {
     const val AGENDAR = "agendar?clienteId={clienteId}"
     const val CATALOGO = "catalogo"
     const val RESPALDO = "respaldo"
+    const val DESDE_MENSAJE = "desde_mensaje"
 
     const val TURNO = "turno/{turnoId}"
     const val EDITAR_TURNO = "editar_turno/{turnoId}"

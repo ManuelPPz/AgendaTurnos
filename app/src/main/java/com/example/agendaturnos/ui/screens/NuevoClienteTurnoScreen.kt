@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.agendaturnos.data.AgendaRepository
 import com.example.agendaturnos.data.model.Cliente
 import com.example.agendaturnos.data.model.Genero
+import com.example.agendaturnos.lector.Borrador
 import com.example.agendaturnos.ui.components.DialogoChoque
 import com.example.agendaturnos.ui.components.DialogoFecha
 import com.example.agendaturnos.ui.components.EditorTurno
@@ -62,13 +63,15 @@ fun NuevoClienteTurnoScreen(
     val catalogo by remember { repo.tratamientosActivos() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
-    var nombre by rememberSaveable { mutableStateOf("") }
-    var telefono by rememberSaveable { mutableStateOf("") }
-    var direccion by rememberSaveable { mutableStateOf("") }
+    // Datos leídos de un mensaje de WhatsApp, si se llegó desde "Agendar desde mensaje"
+    val borrador = remember { Borrador.tomar() }
+    var nombre by rememberSaveable { mutableStateOf(borrador?.nombre.orEmpty()) }
+    var telefono by rememberSaveable { mutableStateOf(borrador?.telefono.orEmpty()) }
+    var direccion by rememberSaveable { mutableStateOf(borrador?.direccionCliente.orEmpty()) }
     var preferencias by rememberSaveable { mutableStateOf("") }
     var genero by rememberSaveable { mutableStateOf<Genero?>(null) }
     var nacimiento by rememberSaveable { mutableStateOf<String?>(null) }
-    val turno = rememberSaveable(saver = TurnoEditorState.Guardador) { TurnoEditorState() }
+    val turno = rememberSaveable(saver = TurnoEditorState.Guardador) { borrador?.aEstadoTurno() ?: TurnoEditorState() }
 
     var intento by remember { mutableStateOf(false) }
     var guardando by remember { mutableStateOf(false) }

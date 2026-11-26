@@ -29,6 +29,12 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- WhatsApp → Compartir → Agenda: lee el mensaje y precarga el turno -->
+            <intent-filter android:label="Agendar turno">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
         <receiver
             android:name=".avisos.AvisoTurnoReceiver"

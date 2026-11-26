@@ -8,10 +8,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.agendaturnos.data.AgendaRepository
+import com.example.agendaturnos.lector.MensajeCompartido
 import com.example.agendaturnos.data.model.EstadoTurno
 import com.example.agendaturnos.ui.screens.AgendarScreen
 import com.example.agendaturnos.ui.screens.BuscarClientesScreen
 import com.example.agendaturnos.ui.screens.CerrarTurnoScreen
+import com.example.agendaturnos.ui.screens.DesdeMensajeScreen
 import com.example.agendaturnos.ui.screens.DetalleTratamientoScreen
 import com.example.agendaturnos.ui.screens.HistorialScreen
 import com.example.agendaturnos.ui.screens.EditarTurnoScreen
@@ -28,6 +30,8 @@ fun AgendaNavHost(
     repo: AgendaRepository,
     turnoDesdeAviso: Long? = null,
     onAvisoAbierto: () -> Unit = {},
+    mensajeCompartido: String? = null,
+    onMensajeAbierto: () -> Unit = {},
 ) {
     val nav = rememberNavController()
     val volver: () -> Unit = { nav.popBackStack() }
@@ -35,6 +39,15 @@ fun AgendaNavHost(
     val argCliente = listOf(navArgument("clienteId") { type = NavType.LongType })
 
     // Al tocar la notificación de un turno, se abre su agenda completa.
+    // Texto compartido desde WhatsApp: se abre el lector de mensajes.
+    LaunchedEffect(mensajeCompartido) {
+        mensajeCompartido?.let {
+            MensajeCompartido.poner(it)
+            nav.navigate(Rutas.DESDE_MENSAJE)
+            onMensajeAbierto()
+        }
+    }
+
     LaunchedEffect(turnoDesdeAviso) {
         turnoDesdeAviso?.let {
             nav.navigate(Rutas.turno(it))
@@ -87,6 +100,18 @@ fun AgendaNavHost(
         }
         composable(Rutas.CATALOGO) { CatalogoScreen(repo = repo, onVolver = volver) }
         composable(Rutas.RESPALDO) { RespaldoScreen(onVolver = volver) }
+        composable(Rutas.DESDE_MENSAJE) {
+            DesdeMensajeScreen(
+                repo = repo,
+                onVolver = volver,
+                onAgendarExistente = { id ->
+                    nav.navigate(Rutas.agendar(id)) { popUpTo(Rutas.DESDE_MENSAJE) { inclusive = true } }
+                },
+                onNuevoCliente = {
+                    nav.navigate(Rutas.NUEVO_CLIENTE) { popUpTo(Rutas.DESDE_MENSAJE) { inclusive = true } }
+                },
+            )
+        }
         composable(Rutas.TURNO, argTurno) { entry ->
             val id = entry.arguments?.getLong("turnoId") ?: 0L
             TurnoDetalleScreen(

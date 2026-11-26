@@ -126,6 +126,7 @@ fun InicioScreen(
                                 "Buscar cliente" to Rutas.BUSCAR,
                                 "Nuevo cliente + turno" to Rutas.NUEVO_CLIENTE,
                                 "Agendar cliente existente" to Rutas.agendar(),
+                                "Agendar desde mensaje" to Rutas.DESDE_MENSAJE,
                                 "Tratamientos" to Rutas.CATALOGO,
                                 "Respaldo" to Rutas.RESPALDO,
                             ).forEach { (texto, ruta) ->

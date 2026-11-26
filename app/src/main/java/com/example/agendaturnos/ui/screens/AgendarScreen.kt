@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.agendaturnos.data.AgendaRepository
 import com.example.agendaturnos.data.model.TratamientoCatalogo
+import com.example.agendaturnos.lector.Borrador
+import com.example.agendaturnos.lector.DatosBorrador
 import com.example.agendaturnos.ui.components.DialogoChoque
 import com.example.agendaturnos.ui.components.EditorTurno
 import com.example.agendaturnos.ui.components.TurnoEditorState
@@ -62,6 +64,8 @@ fun AgendarScreen(
     onCreado: (turnoId: Long) -> Unit,
 ) {
     var clienteId by rememberSaveable { mutableStateOf(clienteIdInicial) }
+    // Datos leídos de un mensaje de WhatsApp, si se llegó desde "Agendar desde mensaje"
+    val borrador = remember { Borrador.tomar() }
     val catalogo by remember { repo.tratamientosActivos() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
@@ -84,6 +88,7 @@ fun AgendarScreen(
                 repo = repo,
                 clienteId = clienteId,
                 catalogo = catalogo,
+                borrador = borrador,
                 modifier = Modifier.padding(padding),
                 onCambiarCliente = { clienteId = 0L },
                 onCreado = onCreado,
@@ -136,6 +141,7 @@ private fun FormularioAgenda(
     repo: AgendaRepository,
     clienteId: Long,
     catalogo: List<TratamientoCatalogo>,
+    borrador: DatosBorrador?,
     modifier: Modifier,
     onCambiarCliente: () -> Unit,
     onCreado: (Long) -> Unit,
@@ -145,7 +151,7 @@ private fun FormularioAgenda(
         .collectAsStateWithLifecycle(initialValue = null)
     val ultimo by remember(clienteId) { repo.ultimoTerminadoDeCliente(clienteId) }
         .collectAsStateWithLifecycle(initialValue = null)
-    val turno = rememberSaveable(clienteId, saver = TurnoEditorState.Guardador) { TurnoEditorState() }
+    val turno = rememberSaveable(clienteId, saver = TurnoEditorState.Guardador) { borrador?.aEstadoTurno() ?: TurnoEditorState() }
 
     var intento by remember { mutableStateOf(false) }
     var guardando by remember { mutableStateOf(false) }

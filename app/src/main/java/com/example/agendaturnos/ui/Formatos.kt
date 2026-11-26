@@ -16,6 +16,7 @@ val LOCALE_UY: Locale = Locale.forLanguageTag("es-UY")
 
 val formatoFechaHora: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d 'de' MMM, HH:mm", LOCALE_UY)
 val formatoFechaLarga: DateTimeFormatter = DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", LOCALE_UY)
+val formatoDia: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", LOCALE_UY)
 val formatoHora: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", LOCALE_UY)
 val formatoFechaCorta: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy", LOCALE_UY)
 
