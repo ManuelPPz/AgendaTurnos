@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Android 12+: pantalla de inicio con fondo negro, igual que el ícono,
+        para que "Agenda" (en blanco) se vea al abrir la app.
+    -->
+    <style name="Theme.AgendaTurnos" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenBackground">#000000</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#000000</item>
+    </style>
+</resources>

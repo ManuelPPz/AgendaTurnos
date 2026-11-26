@@ -1,5 +1,7 @@
 package com.example.agendaturnos.ui.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavType
@@ -42,7 +44,15 @@ fun AgendaNavHost(
         }
     }
 
-    NavHost(navController = nav, startDestination = Rutas.INICIO) {
+    NavHost(
+        navController = nav,
+        startDestination = Rutas.INICIO,
+        // Sin fundido entre pantallas: el cambio es inmediato.
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { ExitTransition.None },
+    ) {
         composable(Rutas.INICIO) {
             InicioScreen(
                 repo = repo,
