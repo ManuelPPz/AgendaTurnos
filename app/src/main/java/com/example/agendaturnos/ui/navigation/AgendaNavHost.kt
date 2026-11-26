@@ -1,7 +1,7 @@
 package com.example.agendaturnos.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.runtime.Composable
@@ -27,8 +27,11 @@ import com.example.agendaturnos.ui.screens.InicioScreen
 import com.example.agendaturnos.ui.screens.PerfilClienteScreen
 import com.example.agendaturnos.ui.screens.RespaldoScreen
 
-/** 300 ms con aceleración y frenado suaves. */
-private val animacion = tween<IntOffset>(durationMillis = 300, easing = FastOutSlowInEasing)
+/**
+ * 400 ms con la curva "enfatizada" de Material: arranca con impulso y frena muy suave al final,
+ * así el movimiento no se siente cortado.
+ */
+private val animacion = tween<IntOffset>(durationMillis = 400, easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
 
 @Composable
 fun AgendaNavHost(

@@ -23,6 +23,9 @@ android {
 
     buildTypes {
         release {
+            // Firmada con la clave de desarrollo para poder correrla desde Android Studio
+            // (y que el respaldo en Google Drive funcione con la misma huella SHA-1).
+            signingConfig = signingConfigs.getByName("debug")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
